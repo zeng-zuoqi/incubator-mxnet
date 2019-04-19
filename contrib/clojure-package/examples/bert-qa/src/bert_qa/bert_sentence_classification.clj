@@ -28,31 +28,6 @@
 (def seq-length 128)
 
 
-
-
-;;; Data preprocessing
-
-#_(defn fit [devs msymbol arg-params aux-params]
-  (let [mod (-> (m/module msymbol {:contexts devs})
-                (m/bind {:data-shapes (mx-io/provide-data-desc train-iter) :label-shapes (mx-io/provide-label-desc val-iter)})
-                (m/init-params {:arg-params arg-params :aux-params aux-params
-                                :allow-missing true}))]
-    (m/fit mod
-           {:train-data train-iter
-            :eval-data val-iter
-            :num-epoch 1
-            :fit-params (m/fit-params {:intializer (init/xavier {:rand-type "gaussian"
-                                                                 :factor-type "in"
-                                                                 :magnitude 2})
-                                       :batch-end-callback (callback/speedometer batch-size 10)})})))
-
-#_(defn fine-tune! [devs]
-  (let [{:keys [msymbol arg-params aux-params] :as model} (get-model)
-        new-model (fine-tune-model (merge model {:num-classes 2}))]
-    new-model
-    #_(fit devs net new-args arg-params)))
-
-
 (defn pre-processing [ctx idx->token token->idx train-item]
     (let [[sentence-a sentence-b label] train-item
        ;;; pre-processing tokenize sentence
@@ -115,11 +90,6 @@
                      :shape [1 2]
                      :dtype dtype/FLOAT32
                      :layout layout/NT}])
-
-  #_(def base-mod (-> bert-base
-                    (m/bind {:data-shapes input-descs})
-                    (m/init-params {:arg-params arg-params :aux-params aux-params
-                                    :allow-missing true})))
 
   ;;; Data Preprocessing for BERT
 
