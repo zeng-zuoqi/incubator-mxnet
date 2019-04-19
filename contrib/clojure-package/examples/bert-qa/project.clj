@@ -21,7 +21,8 @@
   :plugins [[lein-cljfmt "0.5.7"]]
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.apache.mxnet.contrib.clojure/clojure-mxnet "1.5.0-SNAPSHOT"]
-                 [cheshire "5.8.1"]]
+                 [cheshire "5.8.1"]
+                 [clojure-csv/clojure-csv "2.0.1"]]
   :pedantic? :skip
   :java-source-paths ["src/java"]
   :main bert-qa.infer
