@@ -47,6 +47,8 @@ struct MXAPIPredictor {
   std::vector<NDArray> aux_arrays;
   // output shapes
   std::vector<TShape> out_shapes;
+  // input  shapes
+  std::unordered_map<std::string,TShape> input_shapes;
   // uint32_t buffer for output shapes
   std::vector<uint32_t> out_shapes_buffer;
   // key to arguments
@@ -174,15 +176,16 @@ int _CreatePartialOut(const char* symbol_json_str,
         TShape(input_shape_data + input_shape_indptr[i],
                input_shape_data + input_shape_indptr[i + 1]);
   }
+  ret->input_shapes = known_shape;
+
   std::vector<std::string> arg_names = sym.ListInputNames(Symbol::kReadOnlyArgs);
   std::vector<std::string> aux_names = sym.ListInputNames(Symbol::kAuxiliaryStates);
   std::vector<TShape> out_shapes(sym.ListOutputNames().size());
   std::vector<TShape> aux_shapes(aux_names.size());
   std::vector<TShape> arg_shapes;
-  std::unordered_map<std::string, size_t> key2arg;
   for (size_t i = 0; i < arg_names.size(); ++i) {
     std::string key = arg_names[i];
-    key2arg[key] = i;
+    ret->key2arg[key] = i;
   }
 
   try {
@@ -207,7 +210,7 @@ int _CreatePartialOut(const char* symbol_json_str,
   }
 
   Context ctx = Context::Create(static_cast<Context::DeviceType>(dev_type), dev_id);
-
+  ret->ctx= ctx; // padding ctx
   std::vector<NDArray> arg_arrays, aux_arrays;
   for (size_t i = 0; i < arg_shapes.size(); ++i) {
     NDArray nd = NDArray(arg_shapes[i], ctx);
@@ -241,7 +244,10 @@ int _CreatePartialOut(const char* symbol_json_str,
                                      arg_arrays,
                                      grad_store, grad_req,
                                      aux_arrays));
+      ret->out_shapes = out_shapes;
       ret->out_arrays = ret->exec->outputs();
+      ret->aux_arrays = aux_arrays;
+      ret->sym = sym;
     }
     out[i] = ret.release();
   }
@@ -426,6 +432,88 @@ int MXPredReshape(mx_uint num_input_nodes,
   API_END();
 }
 
+int MXPredReshapeReplace(mx_uint num_input_nodes,
+                         const char** input_keys,
+                         const mx_uint* input_shape_indptr,
+                         const mx_uint* input_shape_data,
+                         PredictorHandle handle) {
+  _CreateExecutor(handle);
+  MXAPIPredictor* p = static_cast<MXAPIPredictor*>(handle);
+
+  API_BEGIN();
+  // shape inference
+  std::unordered_map<std::string, TShape> new_shape;
+  for (mx_uint i = 0; i < num_input_nodes; ++i) {
+    new_shape[std::string(input_keys[i])] =
+        TShape(input_shape_data + input_shape_indptr[i],
+            input_shape_data + input_shape_indptr[i + 1]);
+  }
+  std::vector<std::string> arg_names = p->sym.ListInputNames(Symbol::kReadOnlyArgs);
+  std::vector<std::string> aux_names = p->sym.ListInputNames(Symbol::kAuxiliaryStates);
+  std::vector<TShape> out_shapes(p->sym.ListOutputNames().size());
+  std::vector<TShape> aux_shapes(aux_names.size());
+  std::vector<TShape> arg_shapes;
+
+  try {
+    std::vector<TShape> in_shapes;
+    in_shapes.reserve(arg_names.size());
+    for (std::string key : p->sym.ListInputNames(Symbol::kAll)) {
+      if (new_shape.count(key) != 0) {
+        in_shapes.push_back(new_shape[key]);
+      } else {
+        in_shapes.emplace_back();
+      }
+    }
+    nnvm::Graph g; g.outputs = p->sym.outputs;
+    g = mxnet::exec::InferShape(std::move(g), std::move(in_shapes), "__shape__");
+    bool infer_complete = (g.GetAttr<size_t>("shape_num_unknown_nodes") == 0);
+    CHECK(infer_complete)
+      << "The shape information of is not enough to get the shapes";
+    CopyAttr(g.indexed_graph(),
+             g.GetAttr<nnvm::ShapeVector>("shape"),
+             &arg_shapes, &out_shapes, &aux_shapes);
+  } catch (const mxnet::op::InferShapeError &err) {
+    throw dmlc::Error(err.msg);
+  }
+
+  for (size_t i=0; i < arg_names.size(); ++i) {
+    TShape newShape = arg_shapes[i];
+    NDArray &arr = p->arg_arrays[i];
+    if (new_shape.count(arg_names[i]) != 0) {
+      p->arg_arrays[i].ReshapeAndAlloc(newShape);
+    } else {
+       CHECK_EQ(newShape.Size(), arr.shape().Size())
+        << "arg " << arg_names[i]
+        << " shape has been changed, only allow to change the shape of input data.";
+    }
+  }
+
+  for (size_t i=0; i < aux_names.size(); ++i) {
+    TShape newShape = aux_shapes[i];
+    NDArray &arr = p->aux_arrays[i];
+    CHECK_EQ(newShape.Size(), arr.shape().Size())
+      << "aux " << aux_names[i]
+      << " shape has been changed, only allow to change the shape of input data.";
+  }
+
+  // bind
+  {
+    std::map<std::string, Context> ctx_map;
+    std::vector<NDArray> grad_store;
+    grad_store.reserve(p->arg_arrays.size());
+    std::vector<OpReqType> grad_req(p->arg_arrays.size(), kNullOp);
+
+    p->exec.reset(Executor::Bind(p->sym, p->ctx, ctx_map,
+                                 p->arg_arrays,
+                                 grad_store, grad_req,
+                                 p->aux_arrays,
+                                 p->exec.get()));
+    p->out_shapes = out_shapes;
+    p->out_arrays = p->exec->outputs();
+  }
+  API_END();
+}
+
 int MXPredGetOutputShape(PredictorHandle handle,
                          mx_uint out_index,
                          mx_uint** shape_data,
@@ -546,4 +634,33 @@ int MXNDListFree(NDListHandle handle) {
   API_BEGIN();
   delete static_cast<MXAPINDList*>(handle);
   API_END();
+}
+int MXPredSetInputGPU(PredictorHandle handle,
+                      const char* key,
+                      const mx_float* data,
+                      mx_uint size) {
+  MXAPIPredictor* p = static_cast<MXAPIPredictor*>(handle);
+  API_BEGIN();
+  auto it = p->key2arg.find(key);
+  if (it == p->key2arg.end()) {
+    LOG(FATAL) << "cannot find input key " << key;
+  }
+  NDArray& nd = p->arg_arrays[it->second];
+
+  nd.SyncCopyFromGPU(data, size, p->ctx.dev_id);
+  API_END();
+}
+
+int MXPredGetInputPtr(PredictorHandle handle,
+                      const char* key,
+                      void** data) {
+    MXAPIPredictor* p = static_cast<MXAPIPredictor*>(handle);
+    API_BEGIN();
+    auto it = p->key2arg.find(key);
+    if (it == p->key2arg.end()) {
+        LOG(FATAL) << "cannot find input key " << key;
+    }
+    NDArray& nd = p->arg_arrays[it->second];
+  *data = nd.data().dptr_;
+    API_END();
 }

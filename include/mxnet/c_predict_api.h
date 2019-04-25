@@ -173,6 +173,27 @@ MXNET_DLL int MXPredReshape(mx_uint num_input_nodes,
                   const mx_uint* input_shape_data,
                   PredictorHandle handle,
                   PredictorHandle* out);
+
+/*!
+ * \brief Change the input shape of an existing predictor.
+ * \param num_input_nodes Number of input nodes to the net,
+ *    For feedforward net, this is 1.
+ * \param input_keys The name of input argument.
+ *    For feedforward net, this is {"data"}
+ * \param input_shape_indptr Index pointer of shapes of each input node.
+ *    The length of this array = num_input_nodes + 1.
+ *    For feedforward net that takes 4 dimensional input, this is {0, 4}.
+ * \param input_shape_data A flattened data of shapes of each input node.
+ *    For feedforward net that takes 4 dimensional input, this is the shape data.
+ * \param handle The original predictor handle.
+ * \return 0 when success, -1 when failure.
+ */
+MXNET_DLL int MXPredReshapeReplace(mx_uint num_input_nodes,
+                  const char** input_keys,
+                  const mx_uint* input_shape_indptr,
+                  const mx_uint* input_shape_data,
+                  PredictorHandle handle);
+
 /*!
  * \brief Get the shape of output node.
  *  The returned shape_data and shape_ndim is only valid before next call to MXPred function.
@@ -276,6 +297,30 @@ MXNET_DLL int MXNDListGet(NDListHandle handle,
  */
 MXNET_DLL int MXNDListFree(NDListHandle handle);
 
+/*!
+ * \brief Set the input data of predictor.
+ * \param handle The predictor handle.
+ * \param key The name of input node to set.
+ *     For feedforward net, this is "data".
+ * \param data The GPU memory pointer to the data to be set, with the shape specified in MXPredCreate.
+ * \param size The size of data array, used for safety check.
+ * \return 0 when success, -1 when failure.
+ */
+MXNET_DLL int MXPredSetInputGPU(PredictorHandle handle,
+                             const char* key,
+                             const mx_float* data,
+                             mx_uint size);
+
+/*!
+ * \brief Get the input data pointer of predictor.
+ * \param handle The predictor handle.
+ * \param key The name of input node to set.
+ *     For feedforward net, this is "data".
+ * \param data The GPU memory pointer to the data to be set, with the shape specified in MXPredCreate.
+ * \return 0 when success, -1 when failure.
+ */MXNET_DLL int MXPredGetInputPtr(PredictorHandle handle,
+                                const char* key,
+                                void** data);
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
