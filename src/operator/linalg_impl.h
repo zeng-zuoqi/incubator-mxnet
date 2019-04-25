@@ -179,6 +179,9 @@ void linalg_gemm<cpu, mshadow::half::half_t>(const Tensor<cpu, 2, mshadow::half:
     using mshadow::gpu;                                                    \
     CHECK_NOTNULL(s);                                                      \
     check_gemm(A, B, C, alpha, beta, tA, tB);                              \
+    cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s),    \
+                                         Stream<gpu>::GetStream(s));       \
+    CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail";      \
     CUBLAS_CALL(cublas##fname(                                             \
         Stream<gpu>::GetBlasHandle(s), (tB ? CUBLAS_OP_T : CUBLAS_OP_N),   \
         (tA ? CUBLAS_OP_T : CUBLAS_OP_N), C.size(1), C.size(0),            \
@@ -204,6 +207,9 @@ inline void linalg_gemm<gpu, float>(const Tensor<gpu, 2, float>& A,
 #else
   cublasDataType_t full_datatype = CUBLAS_DATA_FULL;
 #endif
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s),
+                                       Stream<gpu>::GetStream(s));
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail";
   CUBLAS_CALL(cublasSgemmEx(
       Stream<gpu>::GetBlasHandle(s), (tB ? CUBLAS_OP_T : CUBLAS_OP_N),
       (tA ? CUBLAS_OP_T : CUBLAS_OP_N), C.size(1), C.size(0),
@@ -227,6 +233,9 @@ void linalg_gemm_axis<gpu, DType>(const Tensor<gpu, 3, DType>& A, const Tensor<g
   using mshadow::gpu; \
   CHECK_NOTNULL(s); \
   linalg_check_batch_size(A.size(1), B.size(1), C.size(1)); \
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                       Stream<gpu>::GetStream(s)); \
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
   CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
                             (tB ? CUBLAS_OP_T : CUBLAS_OP_N), \
                             (tA ? CUBLAS_OP_T : CUBLAS_OP_N), \
@@ -270,6 +279,9 @@ void linalg_gemm<gpu, mshadow::half::half_t>(const Tensor<gpu, 2, mshadow::half:
 #else
   cublasDataType_t half_datatype = CUBLAS_DATA_HALF;
 #endif
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s),
+                                       Stream<gpu>::GetStream(s));
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail";
   CUBLAS_CALL(cublasSgemmEx(blas_handle,
                             (tB ? CUBLAS_OP_T : CUBLAS_OP_N),
                             (tA ? CUBLAS_OP_T : CUBLAS_OP_N),
@@ -306,6 +318,9 @@ void linalg_gemm<gpu, mshadow::half::half_t>(const Tensor<gpu, 2, mshadow::half:
     linalg_check_batch_size(A.size(0), B.size(0), C.size(0)); \
     check_gemm(A[0], B[0], C[0], alpha, beta, tA, tB); \
     using namespace mshadow::cuda; \
+    cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                         Stream<gpu>::GetStream(s)); \
+    CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
     CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
                               (tB ? CUBLAS_OP_T : CUBLAS_OP_N), \
                               (tA ? CUBLAS_OP_T : CUBLAS_OP_N), \
@@ -339,6 +354,9 @@ void linalg_gemm<gpu, mshadow::half::half_t>(const Tensor<gpu, 2, mshadow::half:
       auto cublas_math_mode =
           use_tensor_ops ? CUBLAS_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH;
       auto previous_math_mode = SetCublasMathMode(blas_handle, cublas_math_mode);
+      cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s),
+                                           Stream<gpu>::GetStream(s));
+      CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail";
 
       // cublasGemmStridedBatchedEx is only supported for GPU with architecture
       // capabilities equal or greater than 5.0. Fall back to
@@ -378,6 +396,9 @@ void linalg_gemm<gpu, mshadow::half::half_t>(const Tensor<gpu, 2, mshadow::half:
     CHECK_NOTNULL(s); \
     linalg_check_batch_size(A.size(0), B.size(0), C.size(0)); \
     linalg_check_batch_size(A.size(2), B.size(2), C.size(2)); \
+    cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                         Stream<gpu>::GetStream(s)); \
+    CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
     for (index_t i = 0; i < A.size(2); ++i) { \
       CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
           (tB ? CUBLAS_OP_T : CUBLAS_OP_N), \
@@ -562,6 +583,9 @@ void linalg_trsm<gpu, DType>(const Tensor<gpu, 2, DType>& A, const Tensor<gpu, 2
   using mshadow::gpu; \
   CHECK_NOTNULL(s); \
   check_trsm(A, B, alpha, rightside, lower, transpose); \
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                       Stream<gpu>::GetStream(s)); \
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
   CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
                             (rightside ? CUBLAS_SIDE_LEFT : CUBLAS_SIDE_RIGHT), \
                             (lower ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER), \
@@ -647,6 +671,9 @@ void linalg_trmm<gpu, DType>(const Tensor<gpu, 2, DType>& A, const Tensor<gpu, 2
   using mshadow::gpu; \
   CHECK_NOTNULL(s); \
   check_trmm(A, B, alpha, rightside, lower, transpose); \
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                       Stream<gpu>::GetStream(s)); \
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
   CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
                             (rightside ? CUBLAS_SIDE_LEFT : CUBLAS_SIDE_RIGHT), \
                             (lower ? CUBLAS_FILL_MODE_UPPER : CUBLAS_FILL_MODE_LOWER), \
@@ -929,6 +956,9 @@ void linalg_syrk<gpu, DType>(const Tensor<gpu, 2, DType>& A, \
   using mshadow::gpu; \
   CHECK_NOTNULL(s); \
   check_syrk(A, B, alpha, beta, tA); \
+  cublasStatus_t err = cublasSetStream(Stream<gpu>::GetBlasHandle(s), \
+                                       Stream<gpu>::GetStream(s)); \
+  CHECK_EQ(err, CUBLAS_STATUS_SUCCESS) << "Cublas set stream fail"; \
   CUBLAS_CALL(cublas##fname(Stream<gpu>::GetBlasHandle(s), \
               CUBLAS_FILL_MODE_UPPER, (tA ? CUBLAS_OP_N : CUBLAS_OP_T), \
               B.size(1), (tA ? A.size(0) : A.size(1)), &alpha, \
